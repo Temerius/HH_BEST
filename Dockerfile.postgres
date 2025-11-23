@@ -1,0 +1,7 @@
+FROM postgres:16.10
+
+USER root
+
+RUN apt-get update && apt-get install -y nano && rm -rf /var/lib/apt/lists/*
+
+USER postgres
