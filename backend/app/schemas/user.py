@@ -10,6 +10,7 @@ class UserBase(BaseModel):
     last_name: Optional[str] = None
     phone: Optional[str] = None
     birth_date: Optional[date] = None
+    specialization: Optional[str] = None
 
 
 class UserCreate(UserBase):
@@ -22,6 +23,7 @@ class UserUpdate(BaseModel):
     phone: Optional[str] = None
     birth_date: Optional[date] = None
     avatar_url: Optional[str] = None
+    specialization: Optional[str] = None
 
 
 class UserResponse(UserBase):

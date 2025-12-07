@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Стили для выделенного текста (highlighttext) */
+.highlight {
+  @apply bg-yellow-200 dark:bg-yellow-900/50 px-1 rounded;
+  font-weight: 500;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useTheme } from '../contexts/ThemeContext'
 import api from '../services/api'
 import { User, Resume } from '../types'
@@ -10,6 +10,7 @@ export default function ProfilePage() {
   const isDark = resolvedTheme === 'dark'
   const [user, setUser] = useState<User | null>(null)
   const [resumes, setResumes] = useState<Resume[]>([])
+  const [userSkills, setUserSkills] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -23,12 +24,14 @@ export default function ProfilePage() {
 
   const loadProfile = async () => {
     try {
-      const [userResponse, resumesResponse] = await Promise.all([
+      const [userResponse, resumesResponse, skillsResponse] = await Promise.all([
         api.get('/api/users/me'),
-        api.get('/api/resumes')
+        api.get('/api/resumes'),
+        api.get('/api/skills/my')
       ])
       setUser(userResponse.data)
       setResumes(resumesResponse.data)
+      setUserSkills(skillsResponse.data)
     } catch (error) {
       console.error('Error loading profile:', error)
     } finally {
@@ -84,9 +87,21 @@ export default function ProfilePage() {
 
   return (
     <div className="px-4 py-8">
-      <h1 className={`text-3xl font-bold mb-6 transition-colors ${
-        isDark ? 'text-white' : 'text-gray-900'
-      }`}>Профиль</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className={`text-3xl font-bold transition-colors ${
+          isDark ? 'text-white' : 'text-gray-900'
+        }`}>Профиль</h1>
+        <Link
+          to="/profile/edit"
+          className={`px-4 py-2 rounded-lg transition-colors ${
+            isDark
+              ? 'bg-blue-600 hover:bg-blue-700 text-white'
+              : 'bg-blue-500 hover:bg-blue-600 text-white'
+          }`}
+        >
+          Редактировать
+        </Link>
+      </div>
       {user && (
         <div className={`rounded-lg shadow-sm p-6 mb-6 transition-colors ${
           isDark 
@@ -133,6 +148,13 @@ export default function ProfilePage() {
               <p className={`text-sm transition-colors ${
                 isDark ? 'text-gray-400' : 'text-gray-600'
               }`}>{user.email}</p>
+              {user.specialization && (
+                <p className={`text-sm transition-colors ${
+                  isDark ? 'text-blue-400' : 'text-blue-600'
+                }`}>
+                  {user.specialization}
+                </p>
+              )}
             </div>
           </div>
           <h2 className={`text-xl font-semibold mb-4 transition-colors ${
@@ -157,6 +179,43 @@ export default function ProfilePage() {
                 <strong className={isDark ? 'text-white' : 'text-gray-900'}>Телефон:</strong> {user.phone}
               </p>
             )}
+            {user.specialization && (
+              <p className={isDark ? 'text-gray-300' : 'text-gray-700'}>
+                <strong className={isDark ? 'text-white' : 'text-gray-900'}>Направление:</strong> {user.specialization}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Навыки */}
+      {userSkills.length > 0 && (
+        <div className={`rounded-lg shadow-sm p-6 mb-6 transition-colors ${
+          isDark 
+            ? 'bg-gray-800/50 border border-gray-700' 
+            : 'bg-white'
+        }`}>
+          <h2 className={`text-xl font-semibold mb-4 transition-colors ${
+            isDark ? 'text-white' : 'text-gray-900'
+          }`}>Навыки</h2>
+          <div className="flex flex-wrap gap-2">
+            {userSkills.map((skill) => (
+              <span
+                key={skill.skill_id}
+                className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                  isDark
+                    ? 'bg-blue-900/50 text-blue-300 border border-blue-700'
+                    : 'bg-blue-100 text-blue-800 border border-blue-200'
+                }`}
+              >
+                {skill.skill_name}
+                {skill.level && (
+                  <span className="ml-1 text-xs opacity-75">
+                    ({skill.level})
+                  </span>
+                )}
+              </span>
+            ))}
           </div>
         </div>
       )}

@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
-from app.api import vacancies, users, auth, resumes, favorites, ai
+from app.api import vacancies, users, auth, resumes, favorites, ai, metadata, skills, areas
 from app.core.config import settings
 
 app = FastAPI(
@@ -35,7 +35,10 @@ app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(vacancies.router, prefix="/api/vacancies", tags=["vacancies"])
 app.include_router(resumes.router, prefix="/api/resumes", tags=["resumes"])
 app.include_router(favorites.router, prefix="/api/favorites", tags=["favorites"])
+app.include_router(skills.router, prefix="/api/skills", tags=["skills"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
+app.include_router(metadata.router, prefix="/api/metadata", tags=["metadata"])
+app.include_router(areas.router, prefix="/api/areas", tags=["areas"])
 
 # Статические файлы для аватарок
 img_dir = Path("img")

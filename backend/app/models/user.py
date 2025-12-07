@@ -18,6 +18,7 @@ class User(Base):
     phone = Column(String(20))
     birth_date = Column(Date)
     avatar_url = Column(String(500))
+    specialization = Column(String(100))  # Основное направление разработки (например, 'Backend', 'Frontend', 'Fullstack', 'DevOps')
     is_active = Column(Boolean, default=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
