@@ -7,6 +7,7 @@ from app.models.user import User
 from app.models.favorite import FavoriteVacancy
 from app.models.vacancy import Vacancy
 from app.schemas.vacancy import VacancyResponse
+from app.utils.text_processing import process_highlighttext
 
 router = APIRouter()
 
@@ -25,6 +26,26 @@ async def get_favorites(
     for fav in favorites:
         vacancy = db.query(Vacancy).filter(Vacancy.id == fav.vacancy_id).first()
         if vacancy and not vacancy.archived:
+            # Загружаем метро для вакансии
+            metro_stations = []
+            if hasattr(vacancy, 'metro_stations'):
+                metro_stations = [
+                    {"id": metro.id, "name": metro.name, "line_name": metro.line_name}
+                    for metro in vacancy.metro_stations
+                ]
+            
+            # Загружаем навыки для вакансии
+            skills = []
+            if hasattr(vacancy, 'skills_rel'):
+                skills = [skill.name for skill in vacancy.skills_rel]
+            else:
+                # Fallback: прямой запрос через join
+                from app.models.vacancy import VacancySkill, vacancy_skills
+                skills_query = db.query(VacancySkill).join(vacancy_skills).filter(
+                    vacancy_skills.c.vacancy_id == vacancy.id
+                ).all()
+                skills = [skill.name for skill in skills_query]
+            
             items.append(VacancyResponse(
                 id=vacancy.id,
                 name=vacancy.name,
@@ -35,19 +56,21 @@ async def get_favorites(
                 area_name=vacancy.area.name if vacancy.area else None,
                 address_city=vacancy.address_city,
                 address_raw=vacancy.address_raw,
+                address_lat=float(vacancy.address_lat) if vacancy.address_lat else None,
+                address_lng=float(vacancy.address_lng) if vacancy.address_lng else None,
                 salary_from=vacancy.salary_from,
                 salary_to=vacancy.salary_to,
                 salary_currency=vacancy.salary_currency,
                 salary_gross=vacancy.salary_gross,
-                snippet_requirement=vacancy.snippet_requirement,
-                snippet_responsibility=vacancy.snippet_responsibility,
-                description=vacancy.description,
+                salary_description=vacancy.salary_description,
+                # Полные описания для rabota.by
+                description=process_highlighttext(vacancy.description_html or vacancy.description_text),
                 schedule_name=vacancy.schedule_name,
                 experience_name=vacancy.experience_name,
                 employment_name=vacancy.employment_name,
-                work_format_name=vacancy.work_format_name,
+                metro_stations=metro_stations if metro_stations else None,
+                skills=skills if skills else None,
                 published_at=vacancy.published_at,
-                alternate_url=vacancy.alternate_url,
                 archived=vacancy.archived
             ))
     

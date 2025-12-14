@@ -105,17 +105,16 @@ export default function VacancyDetailPage() {
           {token && (
             <button
               onClick={toggleFavorite}
-              className={`px-4 py-2 rounded-lg transition-colors ${
+              className={`text-4xl transition-colors ${
                 isFavorite
-                  ? isDark
-                    ? 'bg-yellow-600 text-yellow-100 hover:bg-yellow-700'
-                    : 'bg-yellow-400 text-yellow-900 hover:bg-yellow-500'
+                  ? 'text-yellow-500 hover:text-yellow-600'
                   : isDark
-                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? 'text-gray-400 hover:text-yellow-500'
+                    : 'text-gray-300 hover:text-yellow-500'
               }`}
+              title={isFavorite ? 'Удалить из избранного' : 'Добавить в избранное'}
             >
-              {isFavorite ? '★ В избранном' : '☆ В избранное'}
+              {isFavorite ? '★' : '☆'}
             </button>
           )}
         </div>
@@ -152,15 +151,6 @@ export default function VacancyDetailPage() {
                 {vacancy.employment_name}
               </span>
             )}
-            {vacancy.work_format_name && (
-              <span className={`px-3 py-1 rounded transition-colors ${
-                isDark
-                  ? 'bg-purple-900/50 text-purple-300'
-                  : 'bg-purple-100 text-purple-800'
-              }`}>
-                {vacancy.work_format_name}
-              </span>
-            )}
           </div>
         </div>
 
@@ -180,69 +170,6 @@ export default function VacancyDetailPage() {
           </div>
         )}
 
-        {vacancy.tasks && (
-          <div className="mb-6">
-            <h2 className={`text-xl font-semibold mb-3 transition-colors ${
-              isDark ? 'text-white' : 'text-gray-900'
-            }`}>Задачи</h2>
-            <div
-              className={`prose max-w-none ${
-                isDark 
-                  ? 'prose-invert prose-headings:text-white prose-p:text-gray-300 prose-strong:text-white' 
-                  : ''
-              }`}
-              dangerouslySetInnerHTML={{ __html: vacancy.tasks }}
-            />
-          </div>
-        )}
-
-        {vacancy.requirements && (
-          <div className="mb-6">
-            <h2 className={`text-xl font-semibold mb-3 transition-colors ${
-              isDark ? 'text-white' : 'text-gray-900'
-            }`}>Мы ожидаем</h2>
-            <div
-              className={`prose max-w-none ${
-                isDark 
-                  ? 'prose-invert prose-headings:text-white prose-p:text-gray-300 prose-strong:text-white' 
-                  : ''
-              }`}
-              dangerouslySetInnerHTML={{ __html: vacancy.requirements }}
-            />
-          </div>
-        )}
-
-        {vacancy.advantages && (
-          <div className="mb-6">
-            <h2 className={`text-xl font-semibold mb-3 transition-colors ${
-              isDark ? 'text-white' : 'text-gray-900'
-            }`}>Будет плюсом</h2>
-            <div
-              className={`prose max-w-none ${
-                isDark 
-                  ? 'prose-invert prose-headings:text-white prose-p:text-gray-300 prose-strong:text-white' 
-                  : ''
-              }`}
-              dangerouslySetInnerHTML={{ __html: vacancy.advantages }}
-            />
-          </div>
-        )}
-
-        {vacancy.offers && (
-          <div className="mb-6">
-            <h2 className={`text-xl font-semibold mb-3 transition-colors ${
-              isDark ? 'text-white' : 'text-gray-900'
-            }`}>Мы предлагаем</h2>
-            <div
-              className={`prose max-w-none ${
-                isDark 
-                  ? 'prose-invert prose-headings:text-white prose-p:text-gray-300 prose-strong:text-white' 
-                  : ''
-              }`}
-              dangerouslySetInnerHTML={{ __html: vacancy.offers }}
-            />
-          </div>
-        )}
 
         {vacancy.skills && vacancy.skills.length > 0 && (
           <div className="mb-6">
@@ -266,47 +193,57 @@ export default function VacancyDetailPage() {
           </div>
         )}
 
-        {/* Старые поля для совместимости */}
-        {!vacancy.tasks && vacancy.snippet_responsibility && (
+        {/* Адрес и метро */}
+        {(vacancy.address_raw || vacancy.address_city || (vacancy.metro_stations && vacancy.metro_stations.length > 0)) && (
           <div className="mb-6">
             <h2 className={`text-xl font-semibold mb-3 transition-colors ${
               isDark ? 'text-white' : 'text-gray-900'
-            }`}>Обязанности</h2>
-            <div
-              className={`prose max-w-none ${
-                isDark 
-                  ? 'prose-invert prose-headings:text-white prose-p:text-gray-300 prose-strong:text-white' 
-                  : ''
-              }`}
-              dangerouslySetInnerHTML={{ __html: vacancy.snippet_responsibility }}
-            />
+            }`}>Адрес</h2>
+            <div className={`space-y-2 transition-colors ${
+              isDark ? 'text-gray-300' : 'text-gray-700'
+            }`}>
+              {vacancy.address_raw && (
+                <p className="text-base">
+                  <span className="font-medium">Адрес: </span>
+                  {vacancy.address_raw}
+                </p>
+              )}
+              {!vacancy.address_raw && vacancy.address_city && (
+                <p className="text-base">
+                  <span className="font-medium">Город: </span>
+                  {vacancy.address_city}
+                </p>
+              )}
+              {vacancy.metro_stations && vacancy.metro_stations.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">Метро: </span>
+                  {vacancy.metro_stations.map((station, idx) => (
+                    <span
+                      key={idx}
+                      className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                        isDark
+                          ? 'bg-purple-900/50 text-purple-300 border border-purple-700'
+                          : 'bg-purple-100 text-purple-800 border border-purple-200'
+                      }`}
+                    >
+                      🚇 {station.name}
+                      {station.line_name && ` (${station.line_name})`}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {!vacancy.requirements && vacancy.snippet_requirement && (
-          <div className="mb-6">
-            <h2 className={`text-xl font-semibold mb-3 transition-colors ${
-              isDark ? 'text-white' : 'text-gray-900'
-            }`}>Требования</h2>
-            <div
-              className={`prose max-w-none ${
-                isDark 
-                  ? 'prose-invert prose-headings:text-white prose-p:text-gray-300 prose-strong:text-white' 
-                  : ''
-              }`}
-              dangerouslySetInnerHTML={{ __html: vacancy.snippet_requirement }}
-            />
-          </div>
-        )}
-
-        {vacancy.alternate_url && (
+        {vacancy.url && (
           <a
-            href={vacancy.alternate_url}
+            href={vacancy.url}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
           >
-            Открыть на HeadHunter
+            Открыть на rabota.by
           </a>
         )}
       </div>

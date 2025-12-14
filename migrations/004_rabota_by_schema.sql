@@ -101,6 +101,8 @@ CREATE INDEX IF NOT EXISTS idx_vacancy_skills_name ON vacancies.vacancy_skills(s
 COMMENT ON TABLE vacancies.vacancy_skills IS 'Ключевые навыки для вакансий';
 
 ALTER TABLE vacancies.vacancies
+    ADD COLUMN IF NOT EXISTS description_html TEXT,
+    ADD COLUMN IF NOT EXISTS description_text TEXT,
     ADD COLUMN IF NOT EXISTS tasks TEXT,
     ADD COLUMN IF NOT EXISTS requirements TEXT,
     ADD COLUMN IF NOT EXISTS advantages TEXT,

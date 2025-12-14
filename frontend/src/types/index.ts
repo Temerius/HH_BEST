@@ -14,26 +14,15 @@ export interface Vacancy {
   salary_to?: number
   salary_currency?: string
   salary_gross?: boolean
+  salary_description?: string
   // Полные описания для rabota.by
   description?: string
-  tasks?: string
-  requirements?: string
-  advantages?: string
-  offers?: string
-  // Старые поля (для совместимости)
-  snippet_requirement?: string
-  snippet_responsibility?: string
   schedule_name?: string
   experience_name?: string
   employment_name?: string
-  work_format_name?: string
-  education_name?: string
-  specialization_id?: number
-  specialization_name?: string
   metro_stations?: Array<{id: number, name: string, line_name?: string}>
   skills?: string[]
   published_at: string
-  alternate_url?: string
   archived: boolean
 }
 

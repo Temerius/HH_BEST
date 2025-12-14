@@ -1,6 +1,6 @@
 """
 DAG для получения новых вакансий с rabota.by
-Полная версия с исправлениями
+Полная версия с улучшенным извлечением навыков
 Автор: kiselevas
 Дата: 2025-12-07
 """
@@ -16,6 +16,7 @@ import logging
 import time
 import json
 import re
+import html as html_lib
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 from dateutil import parser as date_parser
@@ -34,6 +35,30 @@ MONTHS_RU = {
     'мая': 5, 'июня': 6, 'июля': 7, 'августа': 8,
     'сентября': 9, 'октября': 10, 'ноября': 11, 'декабря': 12
 }
+
+# Популярные технологии для fallback поиска в описании
+TECH_KEYWORDS = [
+    # Языки программирования
+    'Python', 'Java', 'JavaScript', 'TypeScript', 'PHP', 'C#', 'C++', 'Go', 'Golang', 
+    'Ruby', 'Kotlin', 'Swift', 'Rust', 'Scala', 'Perl', 'Delphi', 'Pascal', 'VB.NET',
+    
+    # Фреймворки и библиотеки
+    'React', 'Angular', 'Vue', 'Vue.js', 'Node.js', 'Express', 'Django', 'Flask', 'FastAPI',
+    'Spring', 'Spring Boot', 'Laravel', 'Symfony', 'Yii', 'Rails', '.NET', 'ASP.NET',
+    
+    # Базы данных
+    'SQL', 'NoSQL', 'MongoDB', 'PostgreSQL', 'MySQL', 'Redis', 'Elasticsearch', 
+    'Oracle', 'MS SQL', 'Cassandra', 'DynamoDB', 'MariaDB', 'SQLite',
+    
+    # Инфраструктура и DevOps
+    'Docker', 'Kubernetes', 'AWS', 'Azure', 'GCP', 'Jenkins', 'GitLab', 'CI/CD',
+    'Terraform', 'Ansible', 'Linux', 'Nginx', 'Apache', 'RabbitMQ', 'Kafka',
+    
+    # Другие технологии
+    'Git', 'REST', 'API', 'GraphQL', 'WebSocket', 'gRPC', 'Microservices',
+    'HTML', 'CSS', 'SASS', 'Bootstrap', 'Tailwind', 'Material-UI',
+    'Unit Testing', 'TDD', 'BDD', 'Agile', 'Scrum', 'SOLID', 'Design Patterns'
+]
 
 # Параметры по умолчанию
 default_args = {
@@ -134,10 +159,44 @@ def extract_json_ld(soup: BeautifulSoup) -> Optional[Dict]:
     return None
 
 
+def extract_vacancy_data(html: str) -> Optional[Dict]:
+    """
+    Извлечение данных вакансии из различных JSON структур на странице
+    """
+    patterns = [
+        r'window\.__INITIAL_STATE__\s*=\s*({.+?});',
+        r'HH\.VacancyResponsePage\.init\(({.+?})\);',
+        r'HH\.globalVacancyData\s*=\s*({.+?});',
+        r'"vacancy":\s*({.+?}),\s*"',
+        r'data-vacancy-json="([^"]+)"',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, html, re.DOTALL)
+        if match:
+            try:
+                # Если это атрибут HTML, нужно декодировать
+                if 'data-vacancy-json' in pattern:
+                    json_str = html_lib.unescape(match.group(1))
+                else:
+                    json_str = match.group(1)
+                
+                data = json.loads(json_str)
+                return data
+            except (json.JSONDecodeError, AttributeError) as e:
+                logger.debug(f"Failed to parse JSON with pattern {pattern}: {e}")
+                continue
+    
+    return None
+
+
 def extract_key_skills_from_page(html: str) -> List[str]:
-    """Извлечение ключевых навыков из JSON данных страницы"""
+    """
+    Улучшенное извлечение ключевых навыков из данных страницы
+    """
     key_skills = []
     
+    # Метод 1: Прямой поиск в HTML через регулярки
     patterns = [
         r'"keySkills":\s*{[^}]*"keySkill":\s*\[([^\]]+)\]',
         r'"keySkill":\s*\[([^\]]+)\]',
@@ -152,16 +211,104 @@ def extract_key_skills_from_page(html: str) -> List[str]:
                 skills = re.findall(r'"([^"]+)"', skills_str)
                 key_skills.extend(skills)
                 if key_skills:
-                    logger.debug(f"Found {len(key_skills)} key skills from page data")
+                    logger.info(f"✅ Found {len(key_skills)} key skills from regex pattern")
                     return key_skills
             except Exception as e:
-                logger.debug(f"Error extracting skills: {e}")
+                logger.debug(f"Error extracting skills from pattern {pattern}: {e}")
     
-    return key_skills
+    # Метод 2: Извлечение через полный JSON объект
+    vacancy_data = extract_vacancy_data(html)
+    if vacancy_data:
+        # Различные пути к навыкам в JSON
+        paths = [
+            ['keySkills', 'keySkill'],
+            ['key_skills'],
+            ['skills'],
+            ['vacancy', 'keySkills', 'keySkill'],
+            ['vacancy', 'key_skills'],
+        ]
+        
+        for path in paths:
+            try:
+                current = vacancy_data
+                for key in path:
+                    if isinstance(current, dict) and key in current:
+                        current = current[key]
+                    else:
+                        break
+                else:
+                    # Успешно прошли весь путь
+                    if isinstance(current, list):
+                        key_skills = [str(s) for s in current if s]
+                        if key_skills:
+                            logger.info(f"✅ Found {len(key_skills)} key skills from JSON path: {' > '.join(path)}")
+                            return key_skills
+            except Exception as e:
+                logger.debug(f"Error extracting skills from path {path}: {e}")
+    
+    # Метод 3: Парсинг из HTML блоков (fallback)
+    if not key_skills:
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        # Ищем блок с навыками
+        skills_selectors = [
+            'div[data-qa="skills-element"] span[data-qa="bloko-tag__text"]',
+            'div.bloko-tag-list span.bloko-tag__section_text',
+            'div[class*="skill"] span',
+            'span.bloko-tag__text'
+        ]
+        
+        for selector in skills_selectors:
+            skill_elements = soup.select(selector)
+            if skill_elements:
+                for elem in skill_elements:
+                    skill_text = elem.get_text(strip=True)
+                    if skill_text and len(skill_text) > 1:
+                        # Фильтруем мусор
+                        if not any(x in skill_text.lower() for x in ['навык', 'опыт', 'требован', 'необходим']):
+                            key_skills.append(skill_text)
+                
+                if key_skills:
+                    logger.info(f"✅ Found {len(key_skills)} key skills from HTML selectors")
+                    break
+    
+    # Убираем дубликаты, сохраняя порядок
+    seen = set()
+    unique_skills = []
+    for skill in key_skills:
+        if skill not in seen:
+            seen.add(skill)
+            unique_skills.append(skill)
+    
+    return unique_skills
+
+
+def extract_skills_from_description(description: str) -> List[str]:
+    """
+    Извлечение технологий из описания вакансии (fallback метод)
+    """
+    if not description:
+        return []
+    
+    found_techs = []
+    desc_lower = description.lower()
+    
+    for tech in TECH_KEYWORDS:
+        # Ищем технологию с учетом границ слов
+        pattern = r'\b' + re.escape(tech.lower()) + r'\b'
+        if re.search(pattern, desc_lower):
+            found_techs.append(tech)
+    
+    # Убираем дубликаты
+    return list(dict.fromkeys(found_techs))
 
 
 def parse_complex_address(address_text: str) -> Dict[str, Any]:
-    """Парсинг адреса на составляющие"""
+    """
+    Умный парсинг сложного адреса
+    Пример: 'Минск,Молодежная,Площадь Франтишка Богушевича,Фрунзенская,Юбилейная площадь, улица Тимирязева, 9к10'
+    Логика: город слева, здание и улица справа, всё между ними - метро
+    """
     result = {
         'city': None,
         'street': None,
@@ -172,45 +319,118 @@ def parse_complex_address(address_text: str) -> Dict[str, Any]:
     if not address_text:
         return result
     
+    # Разбиваем адрес на части
     parts = [p.strip() for p in re.split(r'[,;]', address_text) if p.strip()]
     
     if not parts:
         return result
     
-    # Город слева
+    # 1. Первая часть - обычно город
     city_keywords = ['Минск', 'Брест', 'Витебск', 'Гомель', 'Гродно', 'Могилев', 'Бобруйск', 'Барановичи', 'Пинск']
-    if parts and any(keyword in parts[0] for keyword in city_keywords):
-        result['city'] = parts[0]
-        parts = parts[1:]
+    first_part = parts[0]
+    if any(keyword in first_part for keyword in city_keywords):
+        result['city'] = first_part
+        parts = parts[1:]  # Убираем город из списка
     
     if not parts:
         return result
     
-    # Здание и улица справа
-    if parts:
-        last_part = parts[-1]
+    # 2. Идём с конца и ищем здание и улицу
+    # Последний элемент - проверяем на номер дома
+    last_part = parts[-1] if parts else None
+    if last_part:
+        # Проверяем, содержит ли номер дома/корпуса
         if re.search(r'\d+[а-яa-z]?\d*|к\d+|корпус\s*\d+|стр\s*\d+|д\.\s*\d+', last_part, re.IGNORECASE):
             result['building'] = last_part
-            parts = parts[:-1]
+            parts = parts[:-1]  # Убираем здание
     
+    # Предпоследний элемент (после удаления здания) - проверяем на улицу
     if parts:
         last_part = parts[-1]
+        # Проверяем, является ли это улицей
         street_keywords = ['улица', 'ул.', 'проспект', 'пр.', 'пр-т', 'переулок', 'пер.', 
                          'площадь', 'пл.', 'бульвар', 'б-р', 'проезд', 'шоссе', 
                          'набережная', 'наб.', 'тракт']
         if any(keyword in last_part.lower() for keyword in street_keywords):
             result['street'] = last_part
-            parts = parts[:-1]
+            parts = parts[:-1]  # Убираем улицу
     
-    # Всё остальное - метро
+    # 3. Всё что осталось между городом и улицей/домом - станции метро
     for part in parts:
+        # Очищаем от префиксов метро
         clean_station = re.sub(r'(?:^|\s)(?:м\.|метро|ст\.м\.|станция метро)\s*', '', part, flags=re.IGNORECASE)
         clean_station = clean_station.strip()
+        
         if clean_station:
+            # Добавляем как станцию метро
             result['metro_stations'].append(clean_station)
     
     return result
 
+
+def find_metro_station_id(pg_hook, station_name: str) -> Optional[int]:
+    """
+    Поиск станции метро в справочнике metro_stations_by
+    с нечётким соответствием названий
+    """
+    if not station_name or len(station_name.strip()) < 2:
+        return None
+    
+    station_name = station_name.strip()
+    
+    # 1. Точное совпадение (без учёта регистра)
+    result = pg_hook.get_first(
+        """
+        SELECT id FROM vacancies.metro_stations_by 
+        WHERE LOWER(TRIM(name)) = LOWER(TRIM(%s))
+        """,
+        parameters=(station_name,)
+    )
+    if result:
+        return result[0]
+    
+    # 2. Название в БД начинается с искомого
+    result = pg_hook.get_first(
+        """
+        SELECT id FROM vacancies.metro_stations_by 
+        WHERE LOWER(name) LIKE LOWER(%s) || '%%'
+        ORDER BY LENGTH(name)
+        LIMIT 1
+        """,
+        parameters=(station_name,)
+    )
+    if result:
+        return result[0]
+    
+    # 3. Искомое содержится в названии из БД
+    result = pg_hook.get_first(
+        """
+        SELECT id FROM vacancies.metro_stations_by 
+        WHERE LOWER(name) LIKE '%%' || LOWER(%s) || '%%'
+        ORDER BY LENGTH(name)
+        LIMIT 1
+        """,
+        parameters=(station_name,)
+    )
+    if result:
+        return result[0]
+    
+    # 4. Поиск по ключевым словам
+    words = [w for w in station_name.split() if len(w) > 3]
+    for word in words:
+        result = pg_hook.get_first(
+            """
+            SELECT id FROM vacancies.metro_stations_by 
+            WHERE LOWER(name) LIKE '%%' || LOWER(%s) || '%%'
+            ORDER BY LENGTH(name)
+            LIMIT 1
+            """,
+            parameters=(word,)
+        )
+        if result:
+            return result[0]
+    
+    return None
 
 def extract_coordinates(soup: BeautifulSoup) -> tuple:
     """Извлечение координат"""
@@ -285,7 +505,7 @@ def parse_salary(element) -> Optional[Dict]:
 
 
 def parse_vacancy_page(session, vacancy_url):
-    """Парсит страницу вакансии с улучшенным парсингом даты"""
+    """Парсит страницу вакансии с улучшенным извлечением навыков"""
     try:
         response = session.get(vacancy_url, timeout=30)
         response.raise_for_status()
@@ -319,7 +539,7 @@ def parse_vacancy_page(session, vacancy_url):
             'published_at': None
         }
         
-        # === ДАТА ПУБЛИКАЦИИ (ВАЖНО!) ===
+        # === ДАТА ПУБЛИКАЦИИ ===
         published_at = None
         
         # 1. Сначала пробуем JSON-LD
@@ -351,20 +571,9 @@ def parse_vacancy_page(session, vacancy_url):
                         logger.debug(f"Parsed date from HTML: {published_at}")
                         break
         
-        # 3. Из meta тегов
-        if not published_at:
-            meta_date = soup.find('meta', {'property': 'article:published_time'})
-            if meta_date and meta_date.get('content'):
-                try:
-                    published_at = date_parser.parse(meta_date['content'])
-                    logger.debug(f"Got date from meta tag: {published_at}")
-                except:
-                    pass
-        
-        # 4. Fallback на текущую дату
+        # 3. Fallback на текущую дату
         if not published_at:
             published_at = datetime.now()
-            logger.debug(f"Using current date as fallback")
         
         result['published_at'] = published_at
         
@@ -399,8 +608,15 @@ def parse_vacancy_page(session, vacancy_url):
                 result['description_text'] = desc_elem.get_text(separator='\n', strip=True)
                 break
         
-        # === КЛЮЧЕВЫЕ НАВЫКИ ===
+        # === КЛЮЧЕВЫЕ НАВЫКИ (УЛУЧШЕННОЕ ИЗВЛЕЧЕНИЕ) ===
         result['key_skills'] = extract_key_skills_from_page(html_content)
+        
+        # Если навыков нет, пробуем извлечь из описания
+        if not result['key_skills'] and result['description_text']:
+            logger.warning(f"No skills found in structured data for {vacancy_url}, trying description fallback")
+            result['key_skills'] = extract_skills_from_description(result['description_text'])
+            if result['key_skills']:
+                logger.info(f"✅ Found {len(result['key_skills'])} technologies in description")
         
         # === ЗАРПЛАТА ===
         salary_elem = soup.select_one('span[data-qa="vacancy-salary"]') or \
@@ -467,6 +683,12 @@ def parse_vacancy_page(session, vacancy_url):
             result['address_street'] = parsed_address['street']
             result['address_building'] = parsed_address['building']
             result['metro_stations'] = parsed_address['metro_stations']
+            
+            # Логируем результат парсинга для отладки
+            if parsed_address['metro_stations']:
+                logger.info(f"🚇 Parsed metro stations from address '{address_text}': {parsed_address['metro_stations']}")
+            else:
+                logger.debug(f"📍 No metro stations found in address: '{address_text}'")
         
         # === КООРДИНАТЫ ===
         lat, lng = extract_coordinates(soup)
@@ -523,26 +745,59 @@ def fetch_dictionaries(**context):
 
 
 def fetch_new_vacancies(**context):
-    """Загрузка новых вакансий с rabota.by с улучшенной обработкой"""
+    """Загрузка новых вакансий с rabota.by с улучшенной обработкой навыков"""
     logger.info("Starting new vacancies fetch from rabota.by")
     
     pg_hook = PostgresHook(postgres_conn_id='vacancy_postgres')
     session = get_rabota_session()
+
+    # === ПРОВЕРКА СПРАВОЧНИКА МЕТРО ===
+    try:
+        metro_count = pg_hook.get_first("SELECT COUNT(*) FROM vacancies.metro_stations_by")
+        logger.info(f"📊 Metro stations in metro_stations_by: {metro_count[0] if metro_count else 0}")
+        
+        # Выводим несколько примеров для проверки
+        sample_stations = pg_hook.get_records("SELECT id, name FROM vacancies.metro_stations_by LIMIT 5")
+        if sample_stations:
+            logger.info(f"📊 Sample metro stations: {sample_stations}")
+    except Exception as e:
+        logger.error(f"❌ Cannot access metro_stations_by: {e}")
     
-    # Параметры - увеличиваем лимиты
+    # Проверяем доступность vacancy_metro_by
+    try:
+        pg_hook.run("SELECT 1 FROM vacancies.vacancy_metro_by LIMIT 1")
+        logger.info("✅ Table vacancy_metro_by is accessible")
+    except Exception as e:
+        logger.warning(f"⚠️ Table vacancy_metro_by issue: {e}")
+        # Пробуем создать если не существует
+        try:
+            pg_hook.run("""
+                CREATE TABLE IF NOT EXISTS vacancies.vacancy_metro_by (
+                    vacancy_id BIGINT NOT NULL,
+                    metro_id INTEGER NOT NULL,
+                    PRIMARY KEY (vacancy_id, metro_id)
+                )
+            """)
+            logger.info("✅ Created vacancy_metro_by table")
+        except Exception as create_e:
+            logger.error(f"❌ Cannot create vacancy_metro_by: {create_e}")
+    
+    # Параметры
     search_text = Variable.get('rabota_search_text', default_var='программист')
-    search_area = Variable.get('rabota_search_area', default_var='16')  # Исправлена опечатка
-    max_vacancies = int(Variable.get('rabota_max_vacancies', default_var='200'))  # Увеличено
-    max_pages = int(Variable.get('rabota_max_pages', default_var='10'))  # Увеличено
+    search_area = Variable.get('rabota_search_area', default_var='16')
+    max_vacancies = int(Variable.get('rabota_max_vacancies', default_var='200'))
+    max_pages = int(Variable.get('rabota_max_pages', default_var='10'))
     
     total_processed = 0
     new_vacancies = 0
     updated_vacancies = 0
     skipped_existing = 0
     failed_saves = 0
+    total_skills_saved = 0
+    vacancies_with_skills = 0
     
     try:
-        # Получаем все существующие ID без фильтра по дате
+        # Получаем все существующие ID
         existing_vacancies = set()
         result = pg_hook.get_records("SELECT id FROM vacancies.vacancies")
         if result:
@@ -576,10 +831,9 @@ def fetch_new_vacancies(**context):
                 logger.info("No more vacancies found - reached end of results")
                 break
             
-            # Ищем блоки вакансий различными способами
+            # Ищем блоки вакансий
             vacancy_blocks = []
             
-            # Селекторы для блоков вакансий
             block_selectors = [
                 'div[data-qa="vacancy-serp__vacancy"]',
                 'div.vacancy-serp-item',
@@ -595,12 +849,10 @@ def fetch_new_vacancies(**context):
                     logger.info(f"Found {len(blocks)} vacancy blocks with selector: {selector}")
                     break
             
-            # Если блоки не найдены, ищем прямые ссылки
             if not vacancy_blocks:
                 vacancy_links = soup.find_all('a', href=re.compile(r'/vacancy/\d+'))
                 if vacancy_links:
                     logger.info(f"Found {len(vacancy_links)} direct vacancy links")
-                    # Создаём псевдо-блоки из ссылок
                     vacancy_blocks = [{'link': link} for link in vacancy_links]
                 else:
                     consecutive_empty_pages += 1
@@ -667,13 +919,12 @@ def fetch_new_vacancies(**context):
                     if vacancy_data.get('employer_name'):
                         employer = pg_hook.get_first(
                             "SELECT id FROM vacancies.employers WHERE name = %s",
-                            parameters=(vacancy_data['employer_name'][:255],)  # Ограничение длины
+                            parameters=(vacancy_data['employer_name'][:255],)
                         )
                         
                         if employer:
                             employer_id = employer[0]
                         else:
-                            # Создаём нового работодателя
                             try:
                                 result = pg_hook.get_first(
                                     """
@@ -753,7 +1004,7 @@ def fetch_new_vacancies(**context):
                             """,
                             parameters=(
                                 vacancy_id,
-                                vacancy_name[:500],  # Ограничения длины
+                                vacancy_name[:500],
                                 vacancy_url[:500],
                                 employer_id,
                                 area_id,
@@ -787,7 +1038,6 @@ def fetch_new_vacancies(**context):
                         )
                         
                         if result:
-                            # Проверяем, новая это вакансия или обновление
                             if vacancy_id in existing_vacancies:
                                 updated_vacancies += 1
                                 logger.info(f"✅ Updated vacancy {vacancy_id}: {vacancy_name}")
@@ -801,17 +1051,28 @@ def fetch_new_vacancies(**context):
                         failed_saves += 1
                         continue
                     
-                    # === СОХРАНЯЕМ НАВЫКИ ===
+                    # === СОХРАНЯЕМ НАВЫКИ (ВАЖНО!) ===
                     if vacancy_data.get('key_skills'):
+                        logger.info(f"💡 Saving {len(vacancy_data['key_skills'])} skills for vacancy {vacancy_id}: {', '.join(vacancy_data['key_skills'][:5])}")
+                        
+                        # Удаляем старые навыки при обновлении
+                        pg_hook.run(
+                            "DELETE FROM vacancies.vacancy_skills WHERE vacancy_id = %s",
+                            parameters=(vacancy_id,)
+                        )
+                        
+                        saved_skills = 0
                         for skill_name in vacancy_data['key_skills']:
-                            if skill_name:
+                            if skill_name and len(skill_name.strip()) > 1:
                                 try:
+                                    # Получаем или создаём навык через функцию БД
                                     skill_id = pg_hook.get_first(
                                         "SELECT vacancies.add_or_get_skill(%s)",
-                                        parameters=(skill_name[:100],)
+                                        parameters=(skill_name.strip()[:100],)
                                     )
                                     
                                     if skill_id:
+                                        # Добавляем связь вакансия-навык
                                         pg_hook.run(
                                             """
                                             INSERT INTO vacancies.vacancy_skills (vacancy_id, skill_id)
@@ -820,34 +1081,71 @@ def fetch_new_vacancies(**context):
                                             """,
                                             parameters=(vacancy_id, skill_id[0])
                                         )
+                                        saved_skills += 1
                                 except Exception as e:
-                                    logger.debug(f"Failed to add skill {skill_name}: {e}")
+                                    logger.error(f"Failed to add skill '{skill_name}': {e}")
+                        
+                        if saved_skills > 0:
+                            total_skills_saved += saved_skills
+                            vacancies_with_skills += 1
+                            logger.info(f"✅ Saved {saved_skills}/{len(vacancy_data['key_skills'])} skills for vacancy {vacancy_id}")
+                        else:
+                            logger.warning(f"⚠️ Could not save any skills for vacancy {vacancy_id}")
+                    else:
+                        logger.warning(f"⚠️ No skills found for vacancy {vacancy_id}: {vacancy_name}")
                     
                     # === СОХРАНЯЕМ СТАНЦИИ МЕТРО ===
                     if vacancy_data.get('metro_stations'):
+                        logger.info(f"🚇 Processing {len(vacancy_data['metro_stations'])} metro stations for vacancy {vacancy_id}: {vacancy_data['metro_stations']}")
+                        
+                        # Удаляем старые связи при обновлении
+                        try:
+                            pg_hook.run(
+                                "DELETE FROM vacancies.vacancy_metro_by WHERE vacancy_id = %s",
+                                parameters=(vacancy_id,)
+                            )
+                        except Exception as e:
+                            logger.debug(f"Could not delete old metro links: {e}")
+                        
+                        saved_metro = 0
+                        not_found_stations = []
+                        
                         for station_name in vacancy_data['metro_stations']:
+                            if not station_name or len(station_name.strip()) < 2:
+                                continue
+                            
+                            station_name = station_name.strip()
+                            
                             try:
-                                metro_id = pg_hook.get_first(
-                                    "SELECT vacancies.add_or_get_metro(%s, %s)",
-                                    parameters=(
-                                        station_name[:100], 
-                                        vacancy_data.get('address_city', 'Минск')[:100]
-                                    )
-                                )
+                                # Ищем станцию в справочнике
+                                metro_id = find_metro_station_id(pg_hook, station_name)
                                 
                                 if metro_id:
+                                    # Добавляем связь вакансия-метро
                                     pg_hook.run(
                                         """
-                                        INSERT INTO vacancies.vacancy_metro (vacancy_id, metro_id)
+                                        INSERT INTO vacancies.vacancy_metro_by (vacancy_id, metro_id)
                                         VALUES (%s, %s)
                                         ON CONFLICT DO NOTHING
                                         """,
-                                        parameters=(vacancy_id, metro_id[0])
+                                        parameters=(vacancy_id, metro_id)
                                     )
+                                    saved_metro += 1
+                                    logger.debug(f"✅ Linked metro '{station_name}' (ID: {metro_id}) to vacancy {vacancy_id}")
+                                else:
+                                    not_found_stations.append(station_name)
+                                    
                             except Exception as e:
-                                logger.debug(f"Failed to add metro station {station_name}: {e}")
-                    
-                    time.sleep(0.3)  # Небольшая пауза между запросами
+                                logger.error(f"Failed to link metro station '{station_name}': {e}")
+                        
+                        if saved_metro > 0:
+                            logger.info(f"✅ Saved {saved_metro}/{len(vacancy_data['metro_stations'])} metro stations for vacancy {vacancy_id}")
+                        
+                        if not_found_stations:
+                            logger.warning(f"⚠️ Metro stations not found in DB for vacancy {vacancy_id}: {not_found_stations}")
+                    else:
+                        logger.debug(f"No metro stations in address for vacancy {vacancy_id}")
+                    time.sleep(0.3)
                 
                 except Exception as e:
                     logger.error(f"Unexpected error processing vacancy: {str(e)}")
@@ -856,22 +1154,23 @@ def fetch_new_vacancies(**context):
             
             page += 1
             logger.info(f"Page {page} completed: {new_vacancies} new, {updated_vacancies} updated")
-            time.sleep(0.5)  # Пауза между страницами
+            time.sleep(0.5)
         
         # === СОХРАНЯЕМ СТАТИСТИКУ ===
         try:
             pg_hook.run(
                 """
                 INSERT INTO vacancies.parse_statistics 
-                (source, total_processed, new_vacancies, updated_vacancies, failed_vacancies)
-                VALUES (%s, %s, %s, %s, %s)
+                (source, total_processed, new_vacancies, updated_vacancies, failed_vacancies, error_messages)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
                 parameters=(
                     'rabota.by', 
                     total_processed, 
                     new_vacancies, 
                     updated_vacancies, 
-                    failed_saves
+                    failed_saves,
+                    f"Skills: {total_skills_saved} total, {vacancies_with_skills} vacancies with skills"
                 )
             )
         except Exception as e:
@@ -884,18 +1183,23 @@ def fetch_new_vacancies(**context):
         - Updated vacancies: {updated_vacancies}
         - Skipped existing: {skipped_existing}
         - Failed to save: {failed_saves}
+        - Total skills saved: {total_skills_saved}
+        - Vacancies with skills: {vacancies_with_skills}
         """)
         
         context['ti'].xcom_push(key='new_vacancies', value=new_vacancies)
         context['ti'].xcom_push(key='updated_vacancies', value=updated_vacancies)
         context['ti'].xcom_push(key='total_processed', value=total_processed)
+        context['ti'].xcom_push(key='total_skills_saved', value=total_skills_saved)
         
         return {
             'new': new_vacancies, 
             'updated': updated_vacancies,
             'skipped': skipped_existing, 
             'failed': failed_saves,
-            'total': total_processed
+            'total': total_processed,
+            'skills_saved': total_skills_saved,
+            'vacancies_with_skills': vacancies_with_skills
         }
         
     except Exception as e:
@@ -903,14 +1207,168 @@ def fetch_new_vacancies(**context):
         raise
 
 
+def debug_metro_parsing(**context):
+    """Отладочная задача для проверки парсинга метро"""
+    
+    pg_hook = PostgresHook(postgres_conn_id='vacancy_postgres')
+    session = get_rabota_session()
+    
+    logger.info("=" * 60)
+    logger.info("🔍 DEBUG: Starting metro parsing diagnostic")
+    logger.info("=" * 60)
+    
+    # 1. Проверяем справочник метро
+    logger.info("\n📊 Step 1: Checking metro_stations_by table...")
+    try:
+        metro_count = pg_hook.get_first("SELECT COUNT(*) FROM vacancies.metro_stations_by")
+        logger.info(f"   Total stations: {metro_count[0] if metro_count else 0}")
+        
+        sample = pg_hook.get_records("SELECT id, name FROM vacancies.metro_stations_by ORDER BY id LIMIT 10")
+        logger.info(f"   Sample stations: {sample}")
+    except Exception as e:
+        logger.error(f"   ❌ ERROR accessing metro_stations_by: {e}")
+        return
+    
+    # 2. Проверяем таблицу связей
+    logger.info("\n📊 Step 2: Checking vacancy_metro_by table...")
+    try:
+        link_count = pg_hook.get_first("SELECT COUNT(*) FROM vacancies.vacancy_metro_by")
+        logger.info(f"   Total links: {link_count[0] if link_count else 0}")
+    except Exception as e:
+        logger.error(f"   ❌ ERROR accessing vacancy_metro_by: {e}")
+        # Пробуем показать структуру
+        try:
+            columns = pg_hook.get_records("""
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'vacancy_metro_by'
+            """)
+            logger.info(f"   Table columns: {columns}")
+        except:
+            pass
+    
+    # 3. Тестируем парсинг адреса
+    logger.info("\n📊 Step 3: Testing parse_complex_address...")
+    test_addresses = [
+        "Минск,Молодежная,Площадь Франтишка Богушевича,Фрунзенская, улица Тимирязева, 9к10",
+        "Минск, Немига, ул. Немига, 5",
+        "Минск, м. Площадь Ленина, пр. Независимости, 10",
+        "Минск, Октябрьская, Площадь Победы, улица Карла Маркса, 25"
+    ]
+    
+    for addr in test_addresses:
+        parsed = parse_complex_address(addr)
+        logger.info(f"\n   Address: {addr}")
+        logger.info(f"   Parsed city: {parsed['city']}")
+        logger.info(f"   Parsed street: {parsed['street']}")
+        logger.info(f"   Parsed building: {parsed['building']}")
+        logger.info(f"   Parsed metro: {parsed['metro_stations']}")
+        
+        # Пробуем найти станции в БД
+        for station in parsed['metro_stations']:
+            metro_id = find_metro_station_id(pg_hook, station)
+            if metro_id:
+                logger.info(f"   ✅ Station '{station}' -> ID: {metro_id}")
+            else:
+                logger.warning(f"   ❌ Station '{station}' -> NOT FOUND")
+    
+    # 4. Пробуем загрузить одну реальную вакансию
+    logger.info("\n📊 Step 4: Testing real vacancy parsing...")
+    try:
+        # Получаем одну вакансию с адресом
+        response = session.get(
+            RABOTA_SEARCH_URL, 
+            params={'text': 'программист', 'area': '16', 'page': 0},
+            timeout=30
+        )
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Находим первую вакансию
+        link_elem = soup.select_one('a[data-qa*="vacancy-title"]') or \
+                    soup.select_one('a[href*="/vacancy/"]')
+        
+        if link_elem:
+            href = link_elem.get('href', '')
+            vacancy_url = urljoin(RABOTA_BASE_URL, href)
+            logger.info(f"   Testing vacancy: {vacancy_url}")
+            
+            # Парсим страницу
+            vacancy_data = parse_vacancy_page(session, vacancy_url)
+            
+            if vacancy_data:
+                logger.info(f"   Address raw: {vacancy_data.get('address_raw')}")
+                logger.info(f"   Address city: {vacancy_data.get('address_city')}")
+                logger.info(f"   Metro stations: {vacancy_data.get('metro_stations')}")
+                
+                # Пробуем найти каждую станцию
+                for station in vacancy_data.get('metro_stations', []):
+                    metro_id = find_metro_station_id(pg_hook, station)
+                    logger.info(f"   Station '{station}' -> DB ID: {metro_id}")
+            else:
+                logger.error("   ❌ Failed to parse vacancy page")
+        else:
+            logger.error("   ❌ No vacancy links found")
+            
+    except Exception as e:
+        logger.error(f"   ❌ Error testing real vacancy: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+    
+    # 5. Тестируем вставку
+    logger.info("\n📊 Step 5: Testing INSERT into vacancy_metro_by...")
+    try:
+        # Берём любую существующую вакансию
+        vacancy = pg_hook.get_first("SELECT id FROM vacancies.vacancies LIMIT 1")
+        if vacancy:
+            vacancy_id = vacancy[0]
+            # Берём любую станцию метро
+            metro = pg_hook.get_first("SELECT id FROM vacancies.metro_stations_by LIMIT 1")
+            if metro:
+                metro_id = metro[0]
+                
+                logger.info(f"   Testing INSERT: vacancy_id={vacancy_id}, metro_id={metro_id}")
+                
+                # Пробуем вставить
+                pg_hook.run(
+                    """
+                    INSERT INTO vacancies.vacancy_metro_by (vacancy_id, metro_id)
+                    VALUES (%s, %s)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    parameters=(vacancy_id, metro_id)
+                )
+                logger.info("   ✅ INSERT succeeded!")
+                
+                # Проверяем
+                check = pg_hook.get_first(
+                    "SELECT * FROM vacancies.vacancy_metro_by WHERE vacancy_id = %s AND metro_id = %s",
+                    parameters=(vacancy_id, metro_id)
+                )
+                logger.info(f"   Verification: {check}")
+                
+                # Удаляем тестовую запись
+                pg_hook.run(
+                    "DELETE FROM vacancies.vacancy_metro_by WHERE vacancy_id = %s AND metro_id = %s",
+                    parameters=(vacancy_id, metro_id)
+                )
+                logger.info("   Cleaned up test record")
+    except Exception as e:
+        logger.error(f"   ❌ INSERT test failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+    
+    logger.info("\n" + "=" * 60)
+    logger.info("🔍 DEBUG: Diagnostic complete")
+    logger.info("=" * 60)
+
 # Создание DAG
 dag = DAG(
     'rabota_fetch_new_vacancies',
     default_args=default_args,
-    description='Загрузка новых вакансий с rabota.by с полным парсингом',
+    description='Загрузка новых вакансий с rabota.by с полным извлечением навыков',
     schedule_interval=timedelta(hours=6),
     catchup=False,
-    tags=['rabota', 'vacancies', 'etl', 'full']
+    tags=['rabota', 'vacancies', 'etl', 'skills']
 )
 
 # Задачи
@@ -927,4 +1385,4 @@ fetch_new_vacancies_task = PythonOperator(
 )
 
 # Зависимости
-fetch_dictionaries_task >> fetch_new_vacancies_task
+fetch_dictionaries_task  >> fetch_new_vacancies_task

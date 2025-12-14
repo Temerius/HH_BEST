@@ -25,27 +25,16 @@ class VacancyResponse(BaseModel):
     salary_to: Optional[int] = None
     salary_currency: Optional[str] = None
     salary_gross: Optional[bool] = None
+    salary_description: Optional[str] = None
     # Полные описания для rabota.by
     description: Optional[str] = None
-    tasks: Optional[str] = None
-    requirements: Optional[str] = None
-    advantages: Optional[str] = None
-    offers: Optional[str] = None
-    # Старые поля (для совместимости)
-    snippet_requirement: Optional[str] = None
-    snippet_responsibility: Optional[str] = None
     schedule_name: Optional[str] = None
     experience_name: Optional[str] = None
     employment_name: Optional[str] = None
-    work_format_name: Optional[str] = None
-    education_name: Optional[str] = None
-    specialization_id: Optional[int] = None
-    specialization_name: Optional[str] = None
     # Метро и навыки (будут загружаться отдельно)
     metro_stations: Optional[List[dict]] = None
     skills: Optional[List[str]] = None
     published_at: datetime
-    alternate_url: Optional[str] = None
     archived: bool
     
     class Config:
