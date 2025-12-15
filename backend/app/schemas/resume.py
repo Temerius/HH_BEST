@@ -43,6 +43,7 @@ class ResumeResponse(ResumeBase):
     id: UUID
     user_id: UUID
     is_active: bool
+    file_path: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     

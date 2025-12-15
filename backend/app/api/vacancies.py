@@ -181,6 +181,8 @@ async def get_vacancies(
             area_id=vacancy.area_id,
             area_name=vacancy.area.name if vacancy.area else None,
             address_city=vacancy.address_city,
+            address_street=vacancy.address_street,
+            address_building=vacancy.address_building,
             address_raw=vacancy.address_raw,
             address_lat=float(vacancy.address_lat) if vacancy.address_lat else None,
             address_lng=float(vacancy.address_lng) if vacancy.address_lng else None,
@@ -196,6 +198,7 @@ async def get_vacancies(
             employment_name=vacancy.employment_name,
             metro_stations=metro_stations if metro_stations else None,
             skills=skills if skills else None,
+            url=vacancy.url,
             published_at=vacancy.published_at,
             archived=vacancy.archived
         ))
@@ -259,6 +262,8 @@ async def get_vacancy(vacancy_id: int, db: Session = Depends(get_db)):
         area_id=vacancy.area_id,
         area_name=vacancy.area.name if vacancy.area else None,
         address_city=vacancy.address_city,
+        address_street=vacancy.address_street,
+        address_building=vacancy.address_building,
         address_raw=vacancy.address_raw,
         address_lat=float(vacancy.address_lat) if vacancy.address_lat else None,
         address_lng=float(vacancy.address_lng) if vacancy.address_lng else None,
@@ -274,6 +279,7 @@ async def get_vacancy(vacancy_id: int, db: Session = Depends(get_db)):
         employment_name=vacancy.employment_name,
         metro_stations=metro_stations if metro_stations else None,
         skills=skills if skills else None,
+        url=vacancy.url,
         published_at=vacancy.published_at,
         archived=vacancy.archived
     )

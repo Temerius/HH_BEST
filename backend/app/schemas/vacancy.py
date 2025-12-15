@@ -18,6 +18,8 @@ class VacancyResponse(BaseModel):
     area_id: str
     area_name: Optional[str] = None
     address_city: Optional[str] = None
+    address_street: Optional[str] = None
+    address_building: Optional[str] = None
     address_raw: Optional[str] = None
     address_lat: Optional[float] = None
     address_lng: Optional[float] = None
@@ -34,6 +36,7 @@ class VacancyResponse(BaseModel):
     # Метро и навыки (будут загружаться отдельно)
     metro_stations: Optional[List[dict]] = None
     skills: Optional[List[str]] = None
+    url: Optional[str] = None
     published_at: datetime
     archived: bool
     

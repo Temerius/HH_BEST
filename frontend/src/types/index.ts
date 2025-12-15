@@ -7,6 +7,8 @@ export interface Vacancy {
   area_id: string
   area_name?: string
   address_city?: string
+  address_street?: string
+  address_building?: string
   address_raw?: string
   address_lat?: number
   address_lng?: number
@@ -22,6 +24,7 @@ export interface Vacancy {
   employment_name?: string
   metro_stations?: Array<{id: number, name: string, line_name?: string}>
   skills?: string[]
+  url?: string
   published_at: string
   archived: boolean
 }
@@ -63,6 +66,7 @@ export interface Resume {
   languages?: any[]
   is_primary: boolean
   is_active: boolean
+  file_path?: string
   created_at: string
   updated_at: string
 }

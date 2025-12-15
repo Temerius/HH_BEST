@@ -24,6 +24,9 @@ export default function VacancyDetailPage() {
   const loadVacancy = async () => {
     try {
       const response = await api.get(`/api/vacancies/${id}`)
+      console.log('📥 Vacancy data received:', response.data)
+      console.log('📍 URL:', response.data.url)
+      console.log('📍 Coordinates:', response.data.address_lat, response.data.address_lng)
       setVacancy(response.data)
     } catch (error) {
       console.error('Error loading vacancy:', error)
@@ -236,15 +239,85 @@ export default function VacancyDetailPage() {
           </div>
         )}
 
+        {/* Карта */}
+        {(() => {
+          // Формируем полный адрес для карты
+          const addressParts = []
+          if (vacancy.address_city) addressParts.push(vacancy.address_city)
+          if (vacancy.address_street) addressParts.push(vacancy.address_street)
+          if (vacancy.address_building) addressParts.push(vacancy.address_building)
+          const fullAddress = addressParts.length > 0 
+            ? addressParts.join(', ') 
+            : vacancy.address_raw || ''
+          
+          const hasCoordinates = vacancy.address_lat != null && vacancy.address_lng != null
+          const hasAddress = fullAddress.length > 0
+          
+          if (hasCoordinates || hasAddress) {
+            return (
+              <div className="mb-6">
+                <h2 className={`text-xl font-semibold mb-3 transition-colors ${
+                  isDark ? 'text-white' : 'text-gray-900'
+                }`}>Местоположение</h2>
+                <div className={`rounded-lg overflow-hidden border ${
+                  isDark ? 'border-gray-700' : 'border-gray-300'
+                }`} style={{ height: '400px' }}>
+                  {hasCoordinates ? (
+                    // Если есть координаты, используем их с красной меткой
+                    <iframe
+                      width="100%"
+                      height="100%"
+                      frameBorder="0"
+                      style={{ border: 0 }}
+                      src={`https://yandex.ru/map-widget/v1/?ll=${vacancy.address_lng},${vacancy.address_lat}&z=16&pt=${vacancy.address_lng},${vacancy.address_lat},pm2rdm&l=map`}
+                      allowFullScreen
+                      title="Местоположение вакансии"
+                    />
+                  ) : (
+                    // Если координат нет, используем адрес для поиска с меткой
+                    <iframe
+                      width="100%"
+                      height="100%"
+                      frameBorder="0"
+                      style={{ border: 0 }}
+                      src={`https://yandex.ru/map-widget/v1/?text=${encodeURIComponent(fullAddress)}&z=16&pt=${encodeURIComponent(fullAddress)},pm2rdm&l=map`}
+                      allowFullScreen
+                      title="Местоположение вакансии"
+                    />
+                  )}
+                </div>
+                {hasCoordinates && (
+                  <p className={`text-sm mt-2 transition-colors ${
+                    isDark ? 'text-gray-400' : 'text-gray-500'
+                  }`}>
+                    Координаты: {vacancy.address_lat.toFixed(6)}, {vacancy.address_lng.toFixed(6)}
+                  </p>
+                )}
+                {!hasCoordinates && hasAddress && (
+                  <p className={`text-sm mt-2 transition-colors ${
+                    isDark ? 'text-gray-400' : 'text-gray-500'
+                  }`}>
+                    Адрес: {fullAddress}
+                  </p>
+                )}
+              </div>
+            )
+          }
+          return null
+        })()}
+
+        {/* Кнопка открыть на rabota.by */}
         {vacancy.url && (
-          <a
-            href={vacancy.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
-          >
-            Открыть на rabota.by
-          </a>
+          <div className="mb-6">
+            <a
+              href={vacancy.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
+            >
+              Открыть на rabota.by
+            </a>
+          </div>
         )}
       </div>
     </div>
