@@ -1,8 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from starlette.middleware.sessions import SessionMiddleware
 from pathlib import Path
+from urllib.parse import unquote
 from app.api import vacancies, users, auth, resumes, favorites, ai, metadata, skills, areas, metro
 from app.core.config import settings
 
@@ -45,6 +47,41 @@ app.include_router(metro.router, prefix="/api/metro", tags=["metro"])
 img_dir = Path("img")
 img_dir.mkdir(exist_ok=True)
 app.mount("/api/users/avatar", StaticFiles(directory=str(img_dir)), name="avatars")
+
+# Статические файлы для wait_gifs
+wait_gifs_dir = Path("img/wait_gifs")
+wait_gifs_dir.mkdir(parents=True, exist_ok=True)
+
+# Создаем отдельный роутер для гифок, чтобы правильно обрабатывать имена с пробелами и скобками
+wait_gifs_router = APIRouter()
+
+@wait_gifs_router.get("/{filename:path}")
+async def get_wait_gif(filename: str):
+    """Получение гифки по имени файла"""
+    # Декодируем имя файла
+    filename = unquote(filename)
+    
+    # Безопасность: проверяем, что filename не содержит путь
+    if '/' in filename or '..' in filename:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid filename"
+        )
+    
+    gif_path = wait_gifs_dir / filename
+    
+    if not gif_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"GIF not found: {filename}"
+        )
+    
+    return FileResponse(
+        gif_path,
+        media_type="image/gif"
+    )
+
+app.include_router(wait_gifs_router, prefix="/api/wait-gifs", tags=["wait-gifs"])
 
 
 @app.get("/")

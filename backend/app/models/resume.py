@@ -42,3 +42,12 @@ class UserSkill(Base):
     level = Column(String(20), default="intermediate")
     years_of_experience = Column(Integer)
 
+
+class ResumeText(Base):
+    __tablename__ = "resume_texts"
+    __table_args__ = {"schema": "users"}
+    
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.users.id", ondelete="CASCADE"), primary_key=True, index=True)
+    text = Column(Text, nullable=False)  # Текст резюме, извлеченный из PDF
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

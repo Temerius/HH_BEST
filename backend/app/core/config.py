@@ -50,7 +50,8 @@ class Settings(BaseSettings):
     # AI Providers
     AI_PROVIDER: str = "nebius"  # или "azure"
     NEBius_API_KEY: str = ""
-    NEBius_API_URL: str = ""
+    NEBius_API_URL: str = "https://api.studio.nebius.ai/v1/chat/completions"
+    NEBius_MODEL: str = "Qwen/Qwen3-235B-A22B-Thinking-2507"
     AZURE_OPENAI_KEY: str = ""
     AZURE_OPENAI_ENDPOINT: str = ""
     AZURE_OPENAI_DEPLOYMENT: str = ""

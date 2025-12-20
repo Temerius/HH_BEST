@@ -200,7 +200,8 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:8000}
       AI_PROVIDER: ${AI_PROVIDER:-nebius}
       NEBius_API_KEY: ${NEBius_API_KEY:-}
-      NEBius_API_URL: ${NEBius_API_URL:-}
+      NEBius_API_URL: ${NEBius_API_URL:-https://api.studio.nebius.ai/v1/chat/completions}
+      NEBius_MODEL: ${NEBius_MODEL:-Qwen/Qwen3-235B-A22B-Thinking-2507}
       AZURE_OPENAI_KEY: ${AZURE_OPENAI_KEY:-}
       AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
       AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-}

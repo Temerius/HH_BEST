@@ -1,5 +1,5 @@
 from app.models.user import User
-from app.models.resume import Resume, UserSkill
+from app.models.resume import Resume, UserSkill, ResumeText
 from app.models.skill import Skill
 from app.models.vacancy import (
     Vacancy, Employer, Area, ProfessionalRole, Industry, 
@@ -12,6 +12,7 @@ __all__ = [
     "User",
     "Resume",
     "UserSkill",
+    "ResumeText",
     "Skill",
     "Vacancy",
     "Employer",

@@ -9,8 +9,9 @@ import os
 from app.core.database import get_db
 from app.api.dependencies import get_current_user
 from app.models.user import User
-from app.models.resume import Resume
+from app.models.resume import Resume, ResumeText
 from app.schemas.resume import ResumeCreate, ResumeUpdate, ResumeResponse
+from app.utils.text_processing import extract_text_from_pdf
 
 router = APIRouter()
 
@@ -154,6 +155,13 @@ async def delete_resume_file(
     db.commit()
     print(f"✅ [DELETE /file] File path removed from DB")
     
+    # Удаляем текст резюме
+    resume_text = db.query(ResumeText).filter(ResumeText.user_id == current_user.id).first()
+    if resume_text:
+        db.delete(resume_text)
+        db.commit()
+        print(f"✅ [DELETE /file] Resume text deleted")
+    
     return None
 
 
@@ -237,6 +245,19 @@ async def delete_resume(
     resume.is_active = False
     db.commit()
     
+    # Если это было последнее активное резюме с файлом, удаляем текст
+    active_resume_with_file = db.query(Resume).filter(
+        Resume.user_id == current_user.id,
+        Resume.is_active == True,
+        Resume.file_path.isnot(None)
+    ).first()
+    
+    if not active_resume_with_file:
+        resume_text = db.query(ResumeText).filter(ResumeText.user_id == current_user.id).first()
+        if resume_text:
+            db.delete(resume_text)
+            db.commit()
+    
     return None
 
 
@@ -309,6 +330,11 @@ async def upload_resume_pdf(
         print(f"✅ [POST /upload] File saved: {resume_path}")
         print(f"🔍 [POST /upload] File exists after save: {resume_path.exists()}")
         
+        # Извлекаем текст из PDF
+        pdf_text = extract_text_from_pdf(resume_path)
+        if not pdf_text:
+            print(f"⚠️ [POST /upload] Could not extract text from PDF, continuing without text")
+        
         # Обновляем или создаем резюме
         if existing_resume:
             # Обновляем существующее резюме
@@ -316,6 +342,18 @@ async def upload_resume_pdf(
             db.commit()
             db.refresh(existing_resume)
             print(f"✅ [POST /upload] Resume updated, file_path: {existing_resume.file_path}")
+            
+            # Обновляем или создаем текст резюме
+            resume_text = db.query(ResumeText).filter(ResumeText.user_id == current_user.id).first()
+            if resume_text:
+                resume_text.text = pdf_text or ""
+                print(f"✅ [POST /upload] Resume text updated")
+            else:
+                resume_text = ResumeText(user_id=current_user.id, text=pdf_text or "")
+                db.add(resume_text)
+                print(f"✅ [POST /upload] Resume text created")
+            db.commit()
+            
             return existing_resume
         else:
             # Создаем новое резюме
@@ -330,6 +368,13 @@ async def upload_resume_pdf(
             db.commit()
             db.refresh(new_resume)
             print(f"✅ [POST /upload] New resume created, file_path: {new_resume.file_path}")
+            
+            # Создаем запись с текстом резюме
+            resume_text = ResumeText(user_id=current_user.id, text=pdf_text or "")
+            db.add(resume_text)
+            db.commit()
+            print(f"✅ [POST /upload] Resume text created")
+            
             return new_resume
     except Exception as e:
         print(f"❌ [POST /upload] Error saving file: {e}")
