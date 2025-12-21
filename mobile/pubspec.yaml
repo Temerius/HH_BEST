@@ -59,6 +59,9 @@ dependencies:
   
   # Image picker for avatar upload
   image_picker: ^1.0.7
+  
+  # HTML parser for description
+  flutter_html: ^3.0.0-beta.2
 
 dev_dependencies:
   flutter_test:
